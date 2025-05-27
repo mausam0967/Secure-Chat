@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureChat - E2E Encrypted Messaging</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/sodium.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: 90vh;
+        }
+
+        .sidebar {
+            background: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 25px;
+            background: #34495e;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            margin-top: 10px;
+        }
+
+        .status-ready {
+            background: #27ae60;
+            color: white;
+        }
+
+        .status-error {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .user-info {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .key-display {
+            font-family: monospace;
+            font-size: 0.7em;
+            word-break: break-all;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 5px;
+            margin-top: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .key-display:hover {
+            background: rgba(0,0,0,0.3);
+        }
+
+        .contacts-section {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .add-contact {
+            margin-bottom: 20px;
+        }
+
+        .add-contact h3 {
+            margin-bottom: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .contact-list {
+            list-style: none;
+        }
+
+        .contact-item {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .contact-item:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .contact-item.active {
+            background: #3498db;
+        }
+
+        .contact-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .contact-key {
+            font-family: monospace;
+            font-size: 0.7em;
+            opacity: 0.7;
+            word-break: break-all;
+        }
+
+        .chat-area {
+            display: flex;
+            flex-direction: column;
+            background: #f8f9fa;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .chat-title {
+            font-size: 1.2em;
+            color: #2c3e50;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message.sent {
+            background: #3498db;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.received {
+            background: white;
+            color: #2c3e50;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .message-time {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .message-input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            outline: none;
+            font-size: 1em;
+        }
+
+        .message-input:focus {
+            border-color: #3498db;
+        }
+
+        .send-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .welcome {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: #7f8c8d;
+            text-align: center;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        .notification.success {
+            background: #27ae60;
+        }
+
+        .notification.error {
+            background: #e74c3c;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: 100vh;
+            }
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="header">
+                <h1>🔐 SecureChat</h1>
+                <div class="status-indicator" id="statusIndicator">Initializing...</div>
+                <div class="user-info">
+                    <h3>Your Public Key</h3>
+                    <div class="key-display" id="myPublicKey" title="Click to copy">Generating keys...</div>
+                </div>
+            </div>
+            
+            <div class="contacts-section">
+                <div class="add-contact">
+                    <h3>Add Contact</h3>
+                    <div class="input-group">
+                        <input type="text" class="input-field" id="contactName" placeholder="Friend's name">
+                    </div>
+                    <div class="input-group">
+                        <input type="text" class="input-field" id="contactKey" placeholder="Their public key">
+                    </div>
+                    <button class="btn" onclick="addContact()">Add Contact</button>
+                </div>
+                
+                <h3>Contacts</h3>
+                <ul class="contact-list" id="contactList">
+                    <!-- Contacts will appear here -->
+                </ul>
+            </div>
+        </div>
+        
+        <div class="chat-area">
+            <div class="chat-header">
+                <div class="chat-title" id="chatTitle">Select a contact to start chatting</div>
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="welcome">
+                    <h2>Welcome to SecureChat! 🔒</h2>
+                    <p>Your messages are end-to-end encrypted</p>
+                    <p>Add a contact to start secure messaging</p>
+                </div>
+            </div>
+            
+            <div class="message-input-area">
+                <input type="text" class="message-input" id="messageInput" placeholder="Type a message..." disabled>
+                <button class="send-btn" onclick="sendMessage()" disabled id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let myKeys = {};
+        let contacts = [];
+        let currentChat = null;
+        let messages = {};
+        let isInitialized = false;
+
+        // Initialize the app
+        async function initApp() {
+            try {
+                updateStatus('Initializing...', 'error');
+                
+                // Wait for sodium to be ready
+                await sodium.ready;
+                console.log('✅ Sodium library loaded');
+                
+                // Generate keys
+                const identity = sodium.crypto_sign_keypair();
+                const encryption = sodium.crypto_kx_keypair();
+                myKeys = { identity, encryption };
+                
+                // Display public key
+                const publicKeyHex = sodium.to_hex(encryption.publicKey);
+                const keyDisplay = document.getElementById('myPublicKey');
+                keyDisplay.textContent = publicKeyHex;
+                keyDisplay.onclick = () => copyToClipboard(publicKeyHex);
+                
+                console.log('✅ Keys generated');
+                console.log('Public key:', publicKeyHex);
+                
+                // Test server connection
+                await testServerConnection();
+                
+                updateStatus('Ready! 🚀', 'ready');
+                isInitialized = true;
+                
+                // Start polling for messages
+                startMessagePolling();
+                
+            } catch (error) {
+                console.error('❌ Initialization failed:', error);
+                updateStatus('Connection Error', 'error');
+                showNotification('Failed to connect to server. Make sure the relay server is running!', 'error');
+            }
+        }
+
+        // Test server connection
+        async function testServerConnection() {
+            try {
+                const response = await fetch('/health');
+                if (!response.ok) throw new Error('Server not responding');
+                console.log('✅ Server connection successful');
+                return true;
+            } catch (error) {
+                console.error('❌ Server connection failed:', error);
+                throw error;
+            }
+        }
+
+        // Update status indicator
+        function updateStatus(text, type) {
+            const indicator = document.getElementById('statusIndicator');
+            indicator.textContent = text;
+            indicator.className = `status-indicator status-${type}`;
+        }
+
+        // Add contact
+        function addContact() {
+            const name = document.getElementById('contactName').value.trim();
+            const key = document.getElementById('contactKey').value.trim();
+            
+            if (!name || !key) {
+                showNotification('Please enter both name and public key', 'error');
+                return;
+            }
+            
+            try {
+                // Validate key format
+                const keyBytes = sodium.from_hex(key);
+                if (keyBytes.length !== 32) {
+                    throw new Error('Invalid key length');
+                }
+                
+                // Check if contact already exists
+                if (contacts.find(c => c.publicKey === key)) {
+                    showNotification('Contact already exists', 'error');
+                    return;
+                }
+                
+                // Add contact
+                const contact = { name, publicKey: key, keyBytes };
+                contacts.push(contact);
+                
+                // Update UI
+                renderContacts();
+                
+                // Clear form
+                document.getElementById('contactName').value = '';
+                document.getElementById('contactKey').value = '';
+                
+                showNotification(`Added ${name} to contacts!`, 'success');
+                
+            } catch (error) {
+                console.error('Add contact error:', error);
+                showNotification('Invalid public key format', 'error');
+            }
+        }
+
+        // Render contacts
+        function renderContacts() {
+            const list = document.getElementById('contactList');
+            list.innerHTML = '';
+            
+            if (contacts.length === 0) {
+                list.innerHTML = '<li style="color: #95a5a6; text-align: center; padding: 20px;">No contacts yet</li>';
+                return;
+            }
+            
+            contacts.forEach((contact, index) => {
+                const li = document.createElement('li');
+                li.className = 'contact-item';
+                li.onclick = () => selectContact(index);
+                
+                li.innerHTML = `
+                    <div class="contact-name">${contact.name}</div>
+                    <div class="contact-key">${contact.publicKey.substring(0, 20)}...</div>
+                `;
+                
+                list.appendChild(li);
+            });
+        }
+
+        // Select contact
+        function selectContact(index) {
+            // Update active state
+            document.querySelectorAll('.contact-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelectorAll('.contact-item')[index].classList.add('active');
+            
+            currentChat = contacts[index];
+            
+            // Update UI
+            document.getElementById('chatTitle').textContent = `Chat with ${currentChat.name}`;
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').placeholder = `Send encrypted message to ${currentChat.name}`;
+            
+            renderMessages();
+        }
+
+        // Send message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const messageText = input.value.trim();
+            
+            if (!messageText || !currentChat || !isInitialized) return;
+            
+            try {
+                // Encrypt message
+                const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
+                const ciphertext = sodium.crypto_box_easy(
+                    messageText,
+                    nonce,
+                    currentChat.keyBytes,
+                    myKeys.encryption.privateKey
+                );
+                
+                // Send to server
+                const response = await fetch('/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: currentChat.publicKey,
+                        from: sodium.to_hex(myKeys.encryption.publicKey),
+                        ciphertext: sodium.to_hex(ciphertext),
+                        nonce: sodium.to_hex(nonce)
+                    })
+                });
+                
+                if (response.ok) {
+                    // Add to local messages
+                    if (!messages[currentChat.publicKey]) {
+                        messages[currentChat.publicKey] = [];
+                    }
+                    
+                    messages[currentChat.publicKey].push({
+                        text: messageText,
+                        sent: true,
+                        timestamp: new Date()
+                    });
+                    
+                    input.value = '';
+                    renderMessages();
+                    console.log('✅ Message sent');
+                    
+                } else {
+                    throw new Error('Server error');
+                }
+                
+            } catch (error) {
+                console.error('❌ Send failed:', error);
+                showNotification('Failed to send message', 'error');
+            }
+        }
+
+        // Poll for messages
+        async function startMessagePolling() {
+            setInterval(async () => {
+                if (!isInitialized) return;
+                
+                try {
+                    const myPublicKey = sodium.to_hex(myKeys.encryption.publicKey);
+                    
+                    const response = await fetch('/fetch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ recipient: myPublicKey })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.messages.length > 0) {
+                            console.log(`📨 Received ${data.messages.length} messages`);
+                        }
+                        
+                        data.messages.forEach(msg => {
+                            try {
+                                // Find sender
+                                const sender = contacts.find(c => c.publicKey === msg.senderPublicKey);
+                                if (!sender) {
+                                    console.log('📨 Message from unknown sender, ignoring');
+                                    return;
+                                }
+                                
+                                // Decrypt
+                                const ciphertext = sodium.from_hex(msg.ciphertext);
+                                const nonce = sodium.from_hex(msg.nonce);
+                                const senderKeyBytes = sodium.from_hex(msg.senderPublicKey);
+                                
+                                const decrypted = sodium.crypto_box_open_easy(
+                                    ciphertext,
+                                    nonce,
+                                    senderKeyBytes,
+                                    myKeys.encryption.privateKey
+                                );
+                                
+                                const messageText = sodium.to_string(decrypted);
+                                
+                                // Store message
+                                if (!messages[sender.publicKey]) {
+                                    messages[sender.publicKey] = [];
+                                }
+                                
+                                messages[sender.publicKey].push({
+                                    text: messageText,
+                                    sent: false,
+                                    timestamp: new Date()
+                                });
+                                
+                                // Update UI if this chat is active
+                                if (currentChat && currentChat.publicKey === sender.publicKey) {
+                                    renderMessages();
+                                }
+                                
+                                console.log(`✅ Decrypted message from ${sender.name}`);
+                                
+                            } catch (decryptError) {
+                                console.error('❌ Decryption failed:', decryptError);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('❌ Polling error:', error);
+                }
+            }, 2000);
+        }
+
+        // Render messages
+        function renderMessages() {
+            const messagesDiv = document.getElementById('messages');
+            
+            if (!currentChat || !messages[currentChat.publicKey] || messages[currentChat.publicKey].length === 0) {
+                messagesDiv.innerHTML = `
+                    <div class="welcome">
+                        <h2>Chat with ${currentChat ? currentChat.name : 'someone'} 💬</h2>
+                        <p>Send your first encrypted message!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            messagesDiv.innerHTML = '';
+            
+            messages[currentChat.publicKey].forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.sent ? 'sent' : 'received'}`;
+                
+                messageDiv.innerHTML = `
+                    <div>${msg.text}</div>
+                    <div class="message-time">${msg.timestamp.toLocaleTimeString()}</div>
+                `;
+                
+                messagesDiv.appendChild(messageDiv);
+            });
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Utility functions
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('Public key copied to clipboard!', 'success');
+            });
+        }
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Handle Enter key
+        document.addEventListener('DOMContentLoaded', () => {
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
+
+        // Initialize when page loads
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
