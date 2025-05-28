@@ -13,6 +13,9 @@
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "libsodium-wrappers": "^0.7.15"
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "libsodium-wrappers": "^0.7.15",
+    "multer": "^2.0.0"
   }
 }
